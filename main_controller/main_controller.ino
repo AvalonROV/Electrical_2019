@@ -1,4 +1,4 @@
-#include <Servo.h>
+ #include <Servo.h>
 #include <Wire.h>
 
 int thruster_speed[8] = {0, 0, 0, 0, 0, 0};
@@ -108,7 +108,7 @@ void setup() {
   i = 1500;
   //for (int i = 1500; i < 1500; i++) {
   for (int j = 0; j < 7; j++) {
-    servos[j].write(i);
+    servos[j].writeMicroseconds(i);
   }
   //  thruster_1.writeMicroseconds(i);
   //  thruster_2.writeMicroseconds(i);
