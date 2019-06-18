@@ -1,7 +1,9 @@
- #include <Servo.h>
+#include <Servo.h>
 #include <Wire.h>
 
 int thruster_speed[8] = {0, 0, 0, 0, 0, 0};
+uint8_t gripper_state;
+uint8_t liftbag_state;
 
 #define cam_switch_adr 0x03//if pulled high use 0x86 | if pulled low use 0x06
 
@@ -19,18 +21,25 @@ int thruster_speed[8] = {0, 0, 0, 0, 0, 0};
 #define green 45 //pin 39 | PWM
 #define blue 44 //pin 40 | PWM
 
-#define gpio_1 64 //pin 87 | analog A10
-#define gpio_2 65 //pin 86 | analog A11
-#define gpio_3 66 //pin 85 | analog A12
-#define gpio_4 67 //pin 84 | analog A13
-#define gpio_5 68 //pin 83 | analog A14
-#define gpio_6 22 //pin 78
-#define gpio_7 23 //pin 77
-#define gpio_8 24 //pin 76
-#define gpio_9 25 //pin 75
-#define gpio_10 26 //pin 74
+#define gpio_1 64 //pin 87 | analog A10 //INB motor controller 2
+#define gpio_2 65 //pin 86 | analog A11 //INA motor controller 2
+#define gpio_3 66 //pin 85 | analog A12 //INB motor controller 1
+#define gpio_4 67 //pin 84 | analog A13 //INA motor controller 1
+#define gpio_5 68 //pin 83 | analog A14 //INB motor controller 4
+#define gpio_6 22 //pin 78              //INA motor controller 4
+#define gpio_7 23 //pin 77              //INB motor controller 3
+#define gpio_8 24 //pin 76              //INA motor controller 3
+#define gpio_9 25 //pin 75              //INB motor controller 5
+#define gpio_10 26 //pin 74             //INA motor controller 5
 #define gpio_11 27 //pin 73
 #define gpio_12 28 //pin 72
+
+#define motor_1 6 //pin 15 | PWM //PWM motor controller 2
+#define motor_2 7 //pin 16 | PWM //PWM motor controller 1
+#define motor_3 3 //pin 7 | PWM  //PWM motor controller 4
+#define motor_4 2 //pin 6 | PWM  //PWM motor controller 3
+#define motor_5 5 //pin 5 | PWM  //PWM motor controller 5
+#define motor_6 4 //pin 1 | PWM  
 
 Servo thruster_1;
 Servo thruster_2;
@@ -55,17 +64,18 @@ Servo servos[8] = {thruster_1,
 void set_camera(int camera_1 = 1, int camera_2 = 2) {
   Wire.beginTransmission(cam_switch_adr);
   Wire.write(0b01); //output 1 register
-  Wire.write(224 + camera_1); //add 64 to alter gain1 and 32 to alter gain2
+  Wire.write(0b11100001); //add 64 to alter gain1 and 32 to alter gain2
   Wire.endTransmission();
-  delay(1);
+  delay(1000);
   Wire.beginTransmission(cam_switch_adr);
-  Wire.write(0b11); //output 1 register
-  Wire.write(224 + camera_2); //add 64 to alter gain1 and 32 to alter gain2
+  Wire.write(0b11); //output 3 register
+  Wire.write(0b11101001); //add 64 to alter gain1 and 32 to alter gain2
   Wire.endTransmission();
 }
 
 void setup() {
   // put your setup code here, to run once:
+  Wire.begin();
   Serial3.begin(115200);
   thruster_1.attach(55);
   thruster_2.attach(56);
@@ -75,6 +85,7 @@ void setup() {
   thruster_6.attach(60);
   //  thruster_7.attach(61);
   thruster_8.attach(62);
+
   pinMode(gpio_1, OUTPUT);
   pinMode(gpio_2, OUTPUT);
   pinMode(gpio_3, OUTPUT);
@@ -88,6 +99,12 @@ void setup() {
   pinMode(gpio_11, OUTPUT);
   pinMode(gpio_12, OUTPUT);
 
+  pinMode(motor_1, OUTPUT);
+  pinMode(motor_2, OUTPUT);
+  pinMode(motor_3, OUTPUT);
+  pinMode(motor_4, OUTPUT);
+  pinMode(motor_5, OUTPUT);
+
   digitalWrite(gpio_1, LOW);
   digitalWrite(gpio_2, LOW);
   digitalWrite(gpio_3, LOW);
@@ -100,6 +117,13 @@ void setup() {
   digitalWrite(gpio_10, LOW);
   digitalWrite(gpio_11, LOW);
   digitalWrite(gpio_12, LOW);
+
+  digitalWrite(motor_1, HIGH);
+  digitalWrite(motor_2, HIGH);
+  digitalWrite(motor_3, HIGH);
+  digitalWrite(motor_4, HIGH);
+  digitalWrite(motor_5, HIGH);
+
   digitalWrite(red, HIGH);
   digitalWrite(green, HIGH);
   digitalWrite(blue, HIGH);
@@ -118,33 +142,29 @@ void setup() {
   //  thruster_6.writeMicroseconds(i);
   //  //  thruster_7.writeMicroseconds(i);
   //  thruster_8.writeMicroseconds(i);
+  set_camera(1,9);
   delay(7000);
+  
 }
 
 char temp;
 
 void loop() {
-  if (Serial3.available()) 
-  {
+  if (Serial3.available()) {
     delay(5);
-    if (Serial3.read() == 'S')
-    {
+    if (Serial3.read() == 'S') {
       temp = Serial3.read();
-      if (temp == 'A')
-      {
+      if (temp == 'A') {
         Serial3.println("in");
-        for (int i = 0; i < 6; i++)
-        {
+        for (int i = 0; i < 6; i++) {
           thruster_speed[i] = 100 * Serial3.read() + 10 * Serial3.read() + Serial3.read() - 4328;
           Serial3.print(thruster_speed[i]);
           Serial3.println(" inside the for loop");
         }
-        if (Serial3.read() == '!') 
-        {
+        if (Serial3.read() == '!') {
           for (int i = 0; i < 6; i++) {
             //set the speed of each thruster using thruster_speed[i]
-            if (thruster_speed[i] >= 1100 && thruster_speed[i] <= 1900)
-            {
+            if (thruster_speed[i] >= 1100 && thruster_speed[i] <= 1900) {
               servos[i].writeMicroseconds(thruster_speed[i]);
             }
             else {
@@ -156,43 +176,56 @@ void loop() {
           Serial3.print("\n");
           Serial3.read();
         }
-      }
-      else if (temp == 'F')  //main gripper
-      {
-        if (Serial3.read() - 48) 
-        {
-          //open gripper
-        } 
-        else 
-        {
-          //close gripper
+      } else if (temp == 'F') { //main gripper
+        //gripper_state = 1;
+        if (Serial3.read() - 48) {
+          //open gripper //gpio_2, gpio_4, gpio_6, gpio_8, gpio_10
+          digitalWrite(gpio_10, HIGH);
         }
-        Serial3.read();
-      }
-      else if (temp == 'G')  //trap door
-      { 
-        if (Serial3.read() - 48) 
-        {
-          //open trap door
-        } 
         else {
-          //close trap door
+          //close gripper
+          digitalWrite(gpio_10, LOW);
+          
         }
         Serial3.read();
+        Serial3.read();
       }
-      else if (temp == 'H') 
-      {
+      else if (temp == 'G') { //lift bag
+        //liftbag_state = 1;
+        if (Serial3.read() - 48)  {
+          digitalWrite(gpio_8, HIGH);
+        }
+        else {
+          digitalWrite(gpio_8, LOW);
+        }
+        Serial3.read();
+        Serial3.read();
+      }
+      else if (temp == 'H') {
         set_camera(Serial3.read() - 48, Serial3.read() - 48);
         Serial3.read();
       }
       else
         Serial3.println("Not A");
     }
-    else
-    {
+    else {
       Serial3.print(temp);
       Serial3.print(" * ");
       Serial3.println("Not S");
     }
+    
   }
+
+//  if(gripper_state)
+//    digitalWrite(gpio_10, HIGH);
+//  else
+//    digitalWrite(gpio_10, LOW);
+//  if(liftbag_state)
+//    digitalWrite(gpio_8, HIGH);
+//  else
+//    digitalWrite(gpio_8, LOW);
+//    
+//  gripper_state = 0;
+//  liftbag_state = 0;
+  
 }
